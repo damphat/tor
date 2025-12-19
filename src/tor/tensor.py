@@ -34,10 +34,14 @@ def tensor(data: Any) -> Tensor:
     shape = tuple(get_shape(data))
     storage = flatten(data)
 
-    if storage:
-        dtype = type(storage[0])
-    else:
+    if not storage:
         dtype = float
+    elif any(isinstance(x, float) for x in storage):
+        dtype = float
+    else:
+        dtype = int
+
+    storage = [dtype(x) for x in storage]
 
     strides_list: List[int] = []
     if shape:

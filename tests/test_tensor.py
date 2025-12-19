@@ -40,4 +40,3 @@ def test_tensor_type_inference():
     y = tor.tensor([1, 2, 3])
     assert y.dtype == int
     
-    
