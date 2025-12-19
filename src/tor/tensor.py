@@ -84,12 +84,18 @@ class Tensor:
             raise IndexError(f"Too many indices for tensor of dimension {len(self.shape)}")
         
         offset = self.storage_offset
+        resolved_indices = list(indices)
         for i, idx in enumerate(indices):
+            if idx < 0:
+                idx += self.shape[i]
+                resolved_indices[i] = idx
+                
             if idx < 0 or idx >= self.shape[i]:
-                raise IndexError(f"Index {idx} is out of bounds for dimension {i} with size {self.shape[i]}")
+                original_idx = indices[i]
+                raise IndexError(f"Index {original_idx} is out of bounds for dimension {i} with size {self.shape[i]}")
             offset += idx * self.strides[i]
         
-        return offset, indices
+        return offset, tuple(resolved_indices)
 
     def __getitem__(self, indices: Any) -> "Tensor":
         offset, idx_tuple = self._resolve_indices(indices)

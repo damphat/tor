@@ -21,6 +21,11 @@ def test_simple_indexing():
     assert x.tolist() == [[1, 2], [3, 5]]
     assert x1.tolist() == [3,5] 
     assert x11.tolist() == 5
+
+def test_simple_indexing_negative():
+    x = tor.tensor([[1,2],[3,4]])
+    assert x[-1].tolist() == [3,4]
+    assert x[-1,-1].tolist() == 4
     
 def test_indexing_error():
     x = tor.tensor([[1,2],[3,4]])
