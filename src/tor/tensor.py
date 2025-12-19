@@ -38,9 +38,6 @@ class Tensor:
             dim_size = self.shape[shape_idx]
             stride = self.strides[shape_idx]
             
-            if shape_idx == len(self.shape) - 1:
-                return self.storage[offset : offset + dim_size]
-            
             return [
                 recursive_nest(offset + i * stride, shape_idx + 1)
                 for i in range(dim_size)
@@ -55,7 +52,7 @@ class Tensor:
         if dim is None:
             return self.shape
         if dim < 0 or dim >= len(self.shape):
-            raise IndexError(f"Dimension out of range (expected to be in range [0, {len(self.shape)-1}], but got {dim})")
+            raise IndexError("Dimension out of range")
         return self.shape[dim]
 
     def reshape(self, shape: Tuple[int, ...]) -> "Tensor":
@@ -76,49 +73,64 @@ class Tensor:
             storage_offset=self.storage_offset,
         )
 
-    def _resolve_indices(self, indices: Any) -> Tuple[int, Tuple[int, ...]]:
+    def __getitem__(self, indices: Any) -> "Tensor":
         if not isinstance(indices, tuple):
             indices = (indices,)
         
         if len(indices) > len(self.shape):
             raise IndexError(f"Too many indices for tensor of dimension {len(self.shape)}")
-        
-        offset = self.storage_offset
-        resolved_indices = list(indices)
-        for i, idx in enumerate(indices):
-            if idx < 0:
-                idx += self.shape[i]
-                resolved_indices[i] = idx
-                
-            if idx < 0 or idx >= self.shape[i]:
-                original_idx = indices[i]
-                raise IndexError(f"Index {original_idx} is out of bounds for dimension {i} with size {self.shape[i]}")
-            offset += idx * self.strides[i]
-        
-        return offset, tuple(resolved_indices)
 
-    def __getitem__(self, indices: Any) -> "Tensor":
-        offset, idx_tuple = self._resolve_indices(indices)
+        new_shape = []
+        new_strides = []
+        new_offset = self.storage_offset
         
-        # New shape and strides are the remaining dimensions
-        new_shape = self.shape[len(idx_tuple):]
-        new_strides = self.strides[len(idx_tuple):]
+        for i, idx in enumerate(indices):
+            dim_size = self.shape[i]
+            stride = self.strides[i]
+            
+            if isinstance(idx, int):
+                # Integer indexing reduces dimension
+                if idx < 0:
+                    idx += dim_size
+                if idx < 0 or idx >= dim_size:
+                    raise IndexError(f"Index {idx} is out of bounds for dimension {i} with size {dim_size}")
+                new_offset += idx * stride
+            elif isinstance(idx, slice):
+                # Slicing keeps dimension but changes size/stride
+                start, stop, step = idx.indices(dim_size)
+                new_offset += start * stride
+                
+                # Calculate the length of the slice
+                if (step > 0 and start >= stop) or (step < 0 and start <= stop):
+                    slice_len = 0
+                else:
+                    slice_len = (stop - start + (step - (1 if step > 0 else -1))) // step
+                
+                new_shape.append(slice_len)
+                new_strides.append(step * stride)
+            elif idx is Ellipsis:
+                # Basic Ellipsis support could be added but skipping for now or handling as all
+                raise NotImplementedError("Ellipsis not yet supported")
+            else:
+                raise TypeError(f"Invalid index type: {type(idx)}")
+        
+        # Append remaining dimensions that weren't indexed
+        new_shape.extend(self.shape[len(indices):])
+        new_strides.extend(self.strides[len(indices):])
         
         return Tensor(
             storage=self.storage,
-            shape=new_shape,
+            shape=tuple(new_shape),
             dtype=self.dtype,
-            strides=new_strides,
-            storage_offset=offset
+            strides=tuple(new_strides),
+            storage_offset=new_offset
         )
 
     def __setitem__(self, indices: Any, value: Any):
-        offset, idx_tuple = self._resolve_indices(indices)
-        
-        if len(idx_tuple) != len(self.shape):
+        target = self[indices]
+        if target.shape != ():
             raise ValueError("Only scalar assignment is supported via indexing currently")
-            
-        self.storage[offset] = self.dtype(value)
+        self.storage[target.storage_offset] = self.dtype(value)
 
 
 def tensor(data: Any) -> Tensor:
