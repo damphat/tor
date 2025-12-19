@@ -1,3 +1,4 @@
+import math
 from typing import List, Tuple, Any, Type, Union, Optional
 
 
@@ -30,29 +31,86 @@ class Tensor:
     def __repr__(self) -> str:
         prefix = "Tensor("
         suffix = f", dtype={self.dtype.__name__})"
-        if not self.shape:
-            # Handle 0-dim tensor (scalar)
-            val = self.storage[self.storage_offset] if self.storage else ""
-            return f"{prefix}{val}{suffix}"
         
         data_list = self.tolist()
-        formatted_data = self._format_data(data_list, indent=len(prefix) + 1)
+        
+        if self.dtype == float:
+            # Analyze all values for formatting
+            all_values = self._flatten_list(data_list) if self.shape else [data_list]
+            
+            use_sci = False
+            is_all_int = True
+            max_val = 0.0
+            min_pos = float('inf')
+            non_special_values = []
+            
+            for v in all_values:
+                if v is None: continue
+                if not math.isfinite(v):
+                    continue
+                non_special_values.append(v)
+                abs_v = abs(v)
+                if abs_v > max_val: max_val = abs_v
+                if 0 < abs_v < min_pos: min_pos = abs_v
+                if v != int(v):
+                    is_all_int = False
+            
+            if max_val >= 1e4 or (min_pos < 1e-4 and min_pos != float('inf')):
+                use_sci = True
+            
+            if use_sci:
+                base_formatter = lambda x: f"{x:.4e}"
+            elif is_all_int:
+                base_formatter = lambda x: f"{x:.0f}."
+            else:
+                base_formatter = lambda x: f"{x:.4f}"
+
+            # Calculate width for special values alignment
+            if non_special_values:
+                example_formatted = base_formatter(non_special_values[0])
+                width = len(example_formatted)
+            else:
+                width = 3
+
+            def formatter(x: Any) -> str:
+                if not isinstance(x, (int, float)):
+                    return str(x)
+                if math.isnan(x):
+                    return "nan".rjust(width)
+                if math.isinf(x):
+                    s = "inf" if x > 0 else "-inf"
+                    return s.rjust(width)
+                return base_formatter(x)
+        else:
+            formatter = str
+
+        if not self.shape:
+            # Handle 0-dim tensor (scalar)
+            return f"{prefix}{formatter(data_list)}{suffix}"
+
+        formatted_data = self._format_data(data_list, indent=len(prefix), formatter=formatter)
         return f"{prefix}{formatted_data}{suffix}"
 
+    def _flatten_list(self, lst: Any) -> List[Any]:
+        if not isinstance(lst, list):
+            return [lst]
+        res = []
+        for i in lst:
+            res.extend(self._flatten_list(i))
+        return res
 
-    def _format_data(self, data: Any, indent: int) -> str:
+    def _format_data(self, data: Any, indent: int, formatter: Any) -> str:
         if not isinstance(data, list):
-            return str(data)
+            return formatter(data)
         
         if len(data) == 0:
             return "[]"
         
         # If it's a 1D list (contains non-lists)
         if not isinstance(data[0], list):
-            return "[" + ", ".join(map(str, data)) + "]"
+            return "[" + ", ".join(map(formatter, data)) + "]"
         
         # Higher dimensions
-        # Find depth to determine number of newlines
         depth = 0
         curr = data
         while isinstance(curr, list) and curr:
@@ -61,11 +119,11 @@ class Tensor:
         
         # Separator includes newlines and spaces for alignment
         # depth-1 newlines: 1 for 2D, 2 for 3D, etc.
-        sep = "," + "\n" * (depth - 1) + " " * indent
+        sep = "," + "\n" * (depth - 1) + " " * (indent + 1)
         
         parts: List[str] = []
-        for i, item in enumerate(data):
-            parts.append(self._format_data(item, indent + 1))
+        for item in data:
+            parts.append(self._format_data(item, indent + 1, formatter))
             
         return "[" + sep.join(parts) + "]"
 
