@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any, Type, Union
+from typing import List, Tuple, Any, Type, Union, Optional
 
 
 def _compute_strides(shape: Tuple[int, ...]) -> Tuple[int, ...]:
@@ -26,9 +26,9 @@ class Tensor:
         self.strides: Tuple[int, ...] = strides
 
     def __repr__(self) -> str:
-        return f"Tensor({self._to_nested_list()}, dtype={self.dtype.__name__})"
+        return f"Tensor({self.tolist()}, dtype={self.dtype.__name__})"
 
-    def _to_nested_list(self) -> Any:
+    def tolist(self) -> Any:
         def recursive_nest(offset: int, shape_idx: int) -> Any:
             if shape_idx == len(self.shape):
                 return self.storage[offset]
@@ -48,6 +48,13 @@ class Tensor:
             return self.storage[0] if self.storage else []
         
         return recursive_nest(0, 0)
+
+    def size(self, dim: Optional[int] = None) -> Union[Tuple[int, ...], int]:
+        if dim is None:
+            return self.shape
+        if dim < 0 or dim >= len(self.shape):
+            raise IndexError(f"Dimension out of range (expected to be in range [0, {len(self.shape)-1}], but got {dim})")
+        return self.shape[dim]
 
     def reshape(self, shape: Tuple[int, ...]) -> "Tensor":
         size = 1
