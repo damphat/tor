@@ -19,11 +19,13 @@ class Tensor:
         shape: Tuple[int, ...],
         dtype: Type,
         strides: Tuple[int, ...],
+        storage_offset: int = 0,
     ):
         self.storage: List[Any] = storage
         self.shape: Tuple[int, ...] = shape
         self.dtype: Type = dtype
         self.strides: Tuple[int, ...] = strides
+        self.storage_offset: int = storage_offset
 
     def __repr__(self) -> str:
         return f"Tensor({self.tolist()}, dtype={self.dtype.__name__})"
@@ -45,9 +47,9 @@ class Tensor:
             ]
 
         if not self.shape:
-            return self.storage[0] if self.storage else []
+            return self.storage[self.storage_offset] if self.storage else []
         
-        return recursive_nest(0, 0)
+        return recursive_nest(self.storage_offset, 0)
 
     def size(self, dim: Optional[int] = None) -> Union[Tuple[int, ...], int]:
         if dim is None:
@@ -71,7 +73,46 @@ class Tensor:
             shape=shape,
             dtype=self.dtype,
             strides=_compute_strides(shape),
+            storage_offset=self.storage_offset,
         )
+
+    def _resolve_indices(self, indices: Any) -> Tuple[int, Tuple[int, ...]]:
+        if not isinstance(indices, tuple):
+            indices = (indices,)
+        
+        if len(indices) > len(self.shape):
+            raise IndexError(f"Too many indices for tensor of dimension {len(self.shape)}")
+        
+        offset = self.storage_offset
+        for i, idx in enumerate(indices):
+            if idx < 0 or idx >= self.shape[i]:
+                raise IndexError(f"Index {idx} is out of bounds for dimension {i} with size {self.shape[i]}")
+            offset += idx * self.strides[i]
+        
+        return offset, indices
+
+    def __getitem__(self, indices: Any) -> "Tensor":
+        offset, idx_tuple = self._resolve_indices(indices)
+        
+        # New shape and strides are the remaining dimensions
+        new_shape = self.shape[len(idx_tuple):]
+        new_strides = self.strides[len(idx_tuple):]
+        
+        return Tensor(
+            storage=self.storage,
+            shape=new_shape,
+            dtype=self.dtype,
+            strides=new_strides,
+            storage_offset=offset
+        )
+
+    def __setitem__(self, indices: Any, value: Any):
+        offset, idx_tuple = self._resolve_indices(indices)
+        
+        if len(idx_tuple) != len(self.shape):
+            raise ValueError("Only scalar assignment is supported via indexing currently")
+            
+        self.storage[offset] = self.dtype(value)
 
 
 def tensor(data: Any) -> Tensor:
