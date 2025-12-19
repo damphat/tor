@@ -28,7 +28,47 @@ class Tensor:
         self.storage_offset: int = storage_offset
 
     def __repr__(self) -> str:
-        return f"Tensor({self.tolist()}, dtype={self.dtype.__name__})"
+        prefix = "Tensor("
+        suffix = f", dtype={self.dtype.__name__})"
+        if not self.shape:
+            # Handle 0-dim tensor (scalar)
+            val = self.storage[self.storage_offset] if self.storage else ""
+            return f"{prefix}{val}{suffix}"
+        
+        data_list = self.tolist()
+        formatted_data = self._format_data(data_list, indent=len(prefix) + 1)
+        return f"{prefix}{formatted_data}{suffix}"
+
+
+    def _format_data(self, data: Any, indent: int) -> str:
+        if not isinstance(data, list):
+            return str(data)
+        
+        if len(data) == 0:
+            return "[]"
+        
+        # If it's a 1D list (contains non-lists)
+        if not isinstance(data[0], list):
+            return "[" + ", ".join(map(str, data)) + "]"
+        
+        # Higher dimensions
+        # Find depth to determine number of newlines
+        depth = 0
+        curr = data
+        while isinstance(curr, list) and curr:
+            depth += 1
+            curr = curr[0]
+        
+        # Separator includes newlines and spaces for alignment
+        # depth-1 newlines: 1 for 2D, 2 for 3D, etc.
+        sep = "," + "\n" * (depth - 1) + " " * indent
+        
+        parts: List[str] = []
+        for i, item in enumerate(data):
+            parts.append(self._format_data(item, indent + 1))
+            
+        return "[" + sep.join(parts) + "]"
+
 
     def tolist(self) -> Any:
         def recursive_nest(offset: int, shape_idx: int) -> Any:
