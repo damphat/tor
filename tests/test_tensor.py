@@ -39,3 +39,16 @@ def test_tensor_type_inference():
     # nếu không có float thì sẽ coi là int
     y = tor.tensor([1, 2, 3])
     assert y.dtype == int
+
+def test_tensor_repr():
+    # Scalar
+    x = tor.tensor(1.5)
+    assert repr(x) == "Tensor(1.5, dtype=float)"
+    
+    # 1D
+    y = tor.tensor([1, 2, 3])
+    assert repr(y) == "Tensor([1, 2, 3], dtype=int)"
+    
+    # 2D
+    z = tor.tensor([[1, 2], [3, 4]])
+    assert repr(z) == "Tensor([[1, 2], [3, 4]], dtype=int)"

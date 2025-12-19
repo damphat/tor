@@ -25,12 +25,36 @@ class Tensor:
         self.dtype: Type = dtype
         self.strides: Tuple[int, ...] = strides
 
+    def __repr__(self) -> str:
+        return f"Tensor({self._to_nested_list()}, dtype={self.dtype.__name__})"
+
+    def _to_nested_list(self) -> Any:
+        def recursive_nest(offset: int, shape_idx: int) -> Any:
+            if shape_idx == len(self.shape):
+                return self.storage[offset]
+            
+            dim_size = self.shape[shape_idx]
+            stride = self.strides[shape_idx]
+            
+            if shape_idx == len(self.shape) - 1:
+                return self.storage[offset : offset + dim_size]
+            
+            return [
+                recursive_nest(offset + i * stride, shape_idx + 1)
+                for i in range(dim_size)
+            ]
+
+        if not self.shape:
+            return self.storage[0] if self.storage else []
+        
+        return recursive_nest(0, 0)
+
     def reshape(self, shape: Tuple[int, ...]) -> "Tensor":
         size = 1
         for d in shape:
             size *= d
         
-        if not shape and len(self.storage) == 1: # Scalar case
+        if not shape and len(self.storage) == 1:
             pass
         elif size != len(self.storage):
             raise ValueError(f"Cannot reshape tensor of size {len(self.storage)} into shape {shape}")
