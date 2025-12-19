@@ -39,4 +39,3 @@ def test_tensor_type_inference():
     # nếu không có float thì sẽ coi là int
     y = tor.tensor([1, 2, 3])
     assert y.dtype == int
-    

@@ -1,6 +1,17 @@
 from typing import List, Tuple, Any, Type, Union
 
 
+def _compute_strides(shape: Tuple[int, ...]) -> Tuple[int, ...]:
+    if not shape:
+        return ()
+    strides_list: List[int] = []
+    s = 1
+    for d in reversed(shape):
+        strides_list.append(s)
+        s *= d
+    return tuple(reversed(strides_list))
+
+
 class Tensor:
     def __init__(
         self,
@@ -13,6 +24,23 @@ class Tensor:
         self.shape: Tuple[int, ...] = shape
         self.dtype: Type = dtype
         self.strides: Tuple[int, ...] = strides
+
+    def reshape(self, shape: Tuple[int, ...]) -> "Tensor":
+        size = 1
+        for d in shape:
+            size *= d
+        
+        if not shape and len(self.storage) == 1: # Scalar case
+            pass
+        elif size != len(self.storage):
+            raise ValueError(f"Cannot reshape tensor of size {len(self.storage)} into shape {shape}")
+
+        return Tensor(
+            storage=self.storage,
+            shape=shape,
+            dtype=self.dtype,
+            strides=_compute_strides(shape),
+        )
 
 
 def tensor(data: Any) -> Tensor:
@@ -42,16 +70,7 @@ def tensor(data: Any) -> Tensor:
         dtype = int
 
     storage = [dtype(x) for x in storage]
-
-    strides_list: List[int] = []
-    if shape:
-        s = 1
-        for d in reversed(shape):
-            strides_list.append(s)
-            s *= d
-        strides = tuple(reversed(strides_list))
-    else:
-        strides = ()
+    strides = _compute_strides(shape)
 
     return Tensor(storage, shape, dtype, strides)
 
