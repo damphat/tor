@@ -1,7 +1,7 @@
 ## Installation
 
 ```bash
-pip install tor
+pip install git+https://github.com/damphat/tor.git
 ```
 
 ## Usage
