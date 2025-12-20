@@ -1,5 +1,9 @@
 import math
-from typing import List, Tuple, Any, Type, Union, Optional
+import itertools
+from typing import List, Tuple, Any, Type, Union, Optional, Callable
+ 
+ 
+Scalar = Union[int, float]
 
 
 def _compute_strides(shape: Tuple[int, ...]) -> Tuple[int, ...]:
@@ -16,15 +20,15 @@ def _compute_strides(shape: Tuple[int, ...]) -> Tuple[int, ...]:
 class Tensor:
     def __init__(
         self,
-        storage: List[Any],
+        storage: List[Scalar],
         shape: Tuple[int, ...],
-        dtype: Type,
+        dtype: Type[Scalar],
         strides: Tuple[int, ...],
         storage_offset: int = 0,
     ):
-        self.storage: List[Any] = storage
+        self.storage: List[Scalar] = storage
         self.shape: Tuple[int, ...] = shape
-        self.dtype: Type = dtype
+        self.dtype: Type[Scalar] = dtype
         self.strides: Tuple[int, ...] = strides
         self.storage_offset: int = storage_offset
 
@@ -91,10 +95,10 @@ class Tensor:
         formatted_data = self._format_data(data_list, indent=len(prefix), formatter=formatter)
         return f"{prefix}{formatted_data}{suffix}"
 
-    def _flatten_list(self, lst: Any) -> List[Any]:
+    def _flatten_list(self, lst: Any) -> List[Scalar]:
         if not isinstance(lst, list):
             return [lst]
-        res = []
+        res: List[Scalar] = []
         for i in lst:
             res.extend(self._flatten_list(i))
         return res
@@ -229,6 +233,89 @@ class Tensor:
         if target.shape != ():
             raise ValueError("Only scalar assignment is supported via indexing currently")
         self.storage[target.storage_offset] = self.dtype(value)
+
+    def unary_op(self, op: Callable[[Scalar], Scalar]) -> "Tensor":
+        elements = self._flatten_list(self.tolist())
+        applied_values = [op(x) for x in elements]
+
+        if not applied_values:
+            new_dtype = self.dtype
+        elif any(isinstance(x, float) for x in applied_values):
+            new_dtype = float
+        else:
+            new_dtype = int
+
+        new_storage = [new_dtype(x) for x in applied_values]
+        return Tensor(
+            storage=new_storage,
+            shape=self.shape,
+            dtype=new_dtype,
+            strides=_compute_strides(self.shape),
+            storage_offset=0,
+        )
+
+    def binary_op(self, other: Union["Tensor", Any], op: Callable[[Scalar, Scalar], Scalar]) -> "Tensor":
+        if not isinstance(other, Tensor):
+            other = tensor(other)
+
+        shape1 = self.shape
+        shape2 = other.shape
+
+        ndim1 = len(shape1)
+        ndim2 = len(shape2)
+        ndim = max(ndim1, ndim2)
+
+        padded_shape1 = (1,) * (ndim - ndim1) + shape1
+        padded_shape2 = (1,) * (ndim - ndim2) + shape2
+
+        result_shape_list = []
+        for s1, s2 in zip(padded_shape1, padded_shape2):
+            if s1 == s2:
+                result_shape_list.append(s1)
+            elif s1 == 1:
+                result_shape_list.append(s2)
+            elif s2 == 1:
+                result_shape_list.append(s1)
+            else:
+                raise ValueError(
+                    f"Shapes {shape1} and {shape2} are not compatible for broadcasting"
+                )
+
+        result_shape = tuple(result_shape_list)
+        applied_values = []
+
+        for res_idx in itertools.product(*(range(s) for s in result_shape)):
+            off1 = self.storage_offset
+            for i in range(ndim1):
+                res_dim_idx = res_idx[ndim - ndim1 + i]
+                if shape1[i] > 1:
+                    off1 += res_dim_idx * self.strides[i]
+
+            off2 = other.storage_offset
+            for i in range(ndim2):
+                res_dim_idx = res_idx[ndim - ndim2 + i]
+                if shape2[i] > 1:
+                    off2 += res_dim_idx * other.strides[i]
+
+            applied_values.append(op(self.storage[off1], other.storage[off2]))
+
+        if not applied_values:
+            # Fallback for empty tensors or other edge cases
+            new_dtype = self.dtype
+        elif any(isinstance(v, float) for v in applied_values):
+            new_dtype = float
+        else:
+            new_dtype = int
+
+        new_storage = [new_dtype(v) for v in applied_values]
+
+        return Tensor(
+            storage=new_storage,
+            shape=result_shape,
+            dtype=new_dtype,
+            strides=_compute_strides(result_shape),
+            storage_offset=0,
+        )
 
 
 def tensor(data: Any) -> Tensor:
